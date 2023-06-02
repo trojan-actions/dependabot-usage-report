@@ -1,4 +1,7 @@
 const core = require("@actions/core");
+const github = require("@actions/github");
+const stringify = require("csv-stringify/lib/sync");
+const arraySort = require("array-sort");
 const { GitHub } = require("@actions/github/lib/utils");
 const { retry } = require("@octokit/plugin-retry");
 const { throttling } = require("@octokit/plugin-throttling");
@@ -10,8 +13,10 @@ const token = core.getInput("token", { required: true });
 const org =
   core.getInput("org", { required: false }) || eventPayload.organization.login;
 const repoName =
-core.getInput("repoName", { required: true }) ||
-  eventPayload.repository.name;
+  core.getInput("repoName", { required: true }) || eventPayload.repository.name;
+
+let fileDate;
+
 
 // API throttling and retry
 const octokit = new MyOctokit({
@@ -42,12 +47,12 @@ const octokit = new MyOctokit({
 });
 
 // return a list of repo names that are associated with the template repo (which is the repoName input)
-async function getTemplateRepos() {
-  try {
-    let paginationMember = null;
-    let templateRepoArray = [];
+  (async () => {
+    try {
+      let paginationMember = null;
+      let templateRepoArray = [];
 
-    const query = `
+      const query = `
       query ($owner: String!, $cursorID: String) {
         organization(login: $owner) {
           repositories(first: 100, after: $cursorID) {
@@ -66,107 +71,111 @@ async function getTemplateRepos() {
       }
     `;
 
-    let hasNextPageMember = false;
-    let dataJSON = null;
+      let hasNextPageMember = false;
+      let dataJSON = null;
 
-    do {
-      dataJSON = await octokit.graphql({
-        query,
-        owner: org,
-        cursorID: paginationMember,
-      });
+      do {
+        dataJSON = await octokit.graphql({
+          query,
+          owner: org,
+          cursorID: paginationMember,
+        });
 
-      console.log(dataJSON);
+        console.log(dataJSON.organization.repositories.pageInfo.hasNextPage);
 
-      const repos = dataJSON.organization.repositories.nodes;
+        const repos = dataJSON.organization.repositories.nodes;
 
-      hasNextPageMember =
-        dataJSON.organization.repositories.pageInfo.hasNextPage;
+        hasNextPageMember =
+          dataJSON.organization.repositories.pageInfo.hasNextPage;
 
-      if (hasNextPageMember) {
-        paginationMember =
-          dataJSON.organization.repositories.pageInfo.endCursor;
-      } else {
-        paginationMember = null;
-      }
+        if (hasNextPageMember) {
+          paginationMember =
+            dataJSON.organization.repositories.pageInfo.endCursor;
+        } else {
+          paginationMember = null;
+        }
 
-      templateRepoArray = templateRepoArray.concat(repos);
-    } while (hasNextPageMember);
+        templateRepoArray = templateRepoArray.concat(repos);
+      } while (hasNextPageMember);
 
-    const filteredArray = templateRepoArray.filter(
-      (x) => x.templateRepository !== null
-    );
-    const filteredArray2 = filteredArray.filter(
-      (x) => x.templateRepository.nameWithOwner === repoName
-    );
-    const repoNames = filteredArray2.map((x) => x.name);
-    console.log(repoNames);  
-    return repoNames;
-  } catch (error) {
-    core.setFailed(error.message);
-  }
-}
+      const filteredArray = templateRepoArray.filter(
+        (x) => x.templateRepository !== null
+      );
+      const filteredArray2 = filteredArray.filter(
+        (x) => x.templateRepository.nameWithOwner === repoName
+      );
+      const repoNames = filteredArray2.map((x) => x.name);
 
-// create a json file, and add the newly created repo names to the json file
+      await repoDirector(repoNames);
+    } catch (error) {
+      core.setFailed(error.message);
+    }
+  })();
 
-// async function createRepoNamesJSON(repoNames) {
-//   try {
-//     const repo = eventPayload.repository.name;
-//     const owner = eventPayload.repository.owner.login;
-//     const path = "repos/" + owner + "/" + repo + "/contents/repoNames.json";
-//     const message = "Adding repo names to the JSON file";
-//     const content = Buffer.from(JSON.stringify(repoNames)).toString("base64");
-//     const branch = eventPayload.repository.default_branch;
-//     const sha = eventPayload.repository.head_commit.id;
-
-//     await octokit.repos.createOrUpdateFileContents({
-//       owner,
-//       repo,
-//       path,
-//       message,
-//       content,
-//       branch,
-//       sha,
-//     });
-//   } catch (error) {
-//     core.setFailed(error.message);
-//   }
-// }
-
-
-
-// add the repo names to a JSON file in the repo
-// async function addRepoNames(repoNames) {
-//   try {
-//     const repo = eventPayload.repository.name;
-//     const owner = eventPayload.repository.owner.login;
-//     const path = "repos/" + owner + "/" + repo + "/contents/repoNames.json";
-//     const message = "Adding repo names to the JSON file";
-//     const content = Buffer.from(JSON.stringify(repoNames)).toString("base64");
-//     const branch = eventPayload.repository.default_branch;
-//     const sha = eventPayload.repository.head_commit.id;
-
-//     await octokit.repos.createOrUpdateFileContents({
-//       owner,
-//       repo,
-//       path,
-//       message,
-//       content,
-//       branch,
-//       sha,
-//     });
-//   } catch (error) {
-//     core.setFailed(error.message);
-//   }
-// }
-
-// Usage of the functions
-async function run() {
+async function repoDirector(repoArray) {
   try {
-     await getTemplateRepos();
+    let csvArray = [];
+    const filteredArray = repoArray.filter((x) => x);
+
+    filteredArray.forEach((element) => {
+      console.log(element);
+      const repoName = element;
+
+      csvArray.push({
+        repoName,
+      });
+    });
+
+    sortTotals(csvArray);
   } catch (error) {
     core.setFailed(error.message);
   }
 }
 
-run();
+// Add columns, sort and push report to repo
+async function sortTotals(csvArray) {
+  try {
+    const columns = {
+      repoName: "Repo name",
+    };
+
+    const sortColumn =
+      core.getInput("sort", { required: false }) || "additions";
+    const sortArray = arraySort(csvArray, sortColumn, { reverse: true });
+    sortArray.unshift(columns);
+
+    // Convert array to csv
+    const csv = stringify(sortArray, {});
+
+    // Prepare path/filename, repo/org context and commit name/email variables
+    const reportPath = `reports/${org}-${
+      new Date().toISOString().substring(0, 19) + "Z"
+    }-${fileDate}.csv`;
+    const committerName =
+      core.getInput("committer-name", { required: false }) || "github-actions";
+    const committerEmail =
+      core.getInput("committer-email", { required: false }) ||
+      "github-actions@github.com";
+    const { owner, repo } = github.context.repo;
+
+    // Push csv to repo
+    const opts = {
+      owner,
+      repo,
+      path: reportPath,
+      message: `${new Date().toISOString().slice(0, 10)} Git audit-log report`,
+      content: Buffer.from(csv).toString("base64"),
+      committer: {
+        name: committerName,
+        email: committerEmail,
+      },
+    };
+
+    console.log(opts);
+    console.log(`Pushing final CSV report to repository path: ${reportPath}`);
+
+    await octokit.rest.repos.createOrUpdateFileContents(opts);
+  } catch (error) {
+    core.setFailed(error.message);
+  }
+}
