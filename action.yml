@@ -1,5 +1,5 @@
-name: 'dormant-repos'
-description: 'Dormant repos'
+name: 'repos-from-repo-template'
+description: 'Find the repositories that use a template repository'
 inputs:
   token:
     description: 'A Personal Access token with admin:org scope'
@@ -8,6 +8,9 @@ inputs:
     description: 'Custom GitHub organization to retrieve data for'
     default: ${{ github.repository_owner }}
     required: false
+  repoName:
+    description: 'Name of the repository to find templates for'
+    required: true  
 runs:
   using: 'node16'
   main: 'dist/index.js'
