@@ -98,12 +98,40 @@ async function getTemplateRepos() {
       (x) => x.templateRepository.nameWithOwner === repoName
     );
     const repoNames = filteredArray2.map((x) => x.name);
-
+    console.log(repoNames);  
     return repoNames;
   } catch (error) {
     core.setFailed(error.message);
   }
 }
+
+// create a json file, and add the newly created repo names to the json file
+
+// async function createRepoNamesJSON(repoNames) {
+//   try {
+//     const repo = eventPayload.repository.name;
+//     const owner = eventPayload.repository.owner.login;
+//     const path = "repos/" + owner + "/" + repo + "/contents/repoNames.json";
+//     const message = "Adding repo names to the JSON file";
+//     const content = Buffer.from(JSON.stringify(repoNames)).toString("base64");
+//     const branch = eventPayload.repository.default_branch;
+//     const sha = eventPayload.repository.head_commit.id;
+
+//     await octokit.repos.createOrUpdateFileContents({
+//       owner,
+//       repo,
+//       path,
+//       message,
+//       content,
+//       branch,
+//       sha,
+//     });
+//   } catch (error) {
+//     core.setFailed(error.message);
+//   }
+// }
+
+
 
 // add the repo names to a JSON file in the repo
 // async function addRepoNames(repoNames) {
