@@ -106,35 +106,34 @@ async function getTemplateRepos() {
 }
 
 // add the repo names to a JSON file in the repo
-async function addRepoNames(repoNames) {
-  try {
-    const repo = eventPayload.repository.name;
-    const owner = eventPayload.repository.owner.login;
-    const path = "repos/" + owner + "/" + repo + "/contents/repoNames.json";
-    const message = "Adding repo names to the JSON file";
-    const content = Buffer.from(JSON.stringify(repoNames)).toString("base64");
-    const branch = eventPayload.repository.default_branch;
-    const sha = eventPayload.repository.head_commit.id;
+// async function addRepoNames(repoNames) {
+//   try {
+//     const repo = eventPayload.repository.name;
+//     const owner = eventPayload.repository.owner.login;
+//     const path = "repos/" + owner + "/" + repo + "/contents/repoNames.json";
+//     const message = "Adding repo names to the JSON file";
+//     const content = Buffer.from(JSON.stringify(repoNames)).toString("base64");
+//     const branch = eventPayload.repository.default_branch;
+//     const sha = eventPayload.repository.head_commit.id;
 
-    await octokit.repos.createOrUpdateFileContents({
-      owner,
-      repo,
-      path,
-      message,
-      content,
-      branch,
-      sha,
-    });
-  } catch (error) {
-    core.setFailed(error.message);
-  }
-}
+//     await octokit.repos.createOrUpdateFileContents({
+//       owner,
+//       repo,
+//       path,
+//       message,
+//       content,
+//       branch,
+//       sha,
+//     });
+//   } catch (error) {
+//     core.setFailed(error.message);
+//   }
+// }
 
 // Usage of the functions
 async function run() {
   try {
-    const repoNames = await getTemplateRepos();
-    await addRepoNames(repoNames);
+    await getTemplateRepos();
   } catch (error) {
     core.setFailed(error.message);
   }
