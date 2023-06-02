@@ -17,7 +17,6 @@ const repoName =
 
 let fileDate;
 
-
 // API throttling and retry
 const octokit = new MyOctokit({
   auth: token,
@@ -81,7 +80,6 @@ const octokit = new MyOctokit({
           cursorID: paginationMember,
         });
 
-        console.log(dataJSON.organization.repositories.pageInfo.hasNextPage);
 
         const repos = dataJSON.organization.repositories.nodes;
 
@@ -118,7 +116,6 @@ async function repoDirector(repoArray) {
     const filteredArray = repoArray.filter((x) => x);
 
     filteredArray.forEach((element) => {
-      console.log(element);
       const repoName = element;
 
       csvArray.push({
@@ -171,8 +168,6 @@ async function sortTotals(csvArray) {
       },
     };
 
-    console.log(opts);
-    console.log(`Pushing final CSV report to repository path: ${reportPath}`);
 
     await octokit.rest.repos.createOrUpdateFileContents(opts);
   } catch (error) {
