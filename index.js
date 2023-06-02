@@ -10,7 +10,7 @@ const token = core.getInput("token", { required: true });
 const org =
   core.getInput("org", { required: false }) || eventPayload.organization.login;
 const repoName =
-  core.getInput("repo-name", { required: true }) ||
+core.getInput("repoName", { required: true }) ||
   eventPayload.repository.name;
 
 // API throttling and retry
