@@ -1,6 +1,6 @@
 # Dependabot usage report
 
-This GitHub Action generates a report of all the repositories in your organization that have a Dependabot configuration file. The report is pushed to a specified repository as a Markdown file.
+This GitHub Action generates a report of all the repositories in your organization that have a Dependabot configuration file. The report is pushed to a specified repository as a csv file.
 
 ### Inputs
 `token` (required): A GitHub token with repo scope to push the report to the repository.
