@@ -7,15 +7,10 @@ const { retry } = require("@octokit/plugin-retry");
 const { throttling } = require("@octokit/plugin-throttling");
 
 const MyOctokit = GitHub.plugin(throttling, retry);
-const eventPayload = require(process.env.GITHUB_EVENT_PATH);
 
 const token = core.getInput("token", { required: true });
-const org =
-  core.getInput("org", { required: false }) || eventPayload.organization.login;
-const repoName =
-  core.getInput("repoName", { required: true }) || eventPayload.repository.name;
-
-let fileDate;
+const org = core.getInput("org", { required: false });
+const fileDate = new Date().toISOString().substring(0, 19) + "Z";
 
 // API throttling and retry
 const octokit = new MyOctokit({
@@ -45,109 +40,85 @@ const octokit = new MyOctokit({
   },
 });
 
-// return a list of repo names that are associated with the template repo (which is the repoName input)
-  (async () => {
-    try {
-      let paginationMember = null;
-      let templateRepoArray = [];
+// Function to fetch repositories with Dependabot.yml files
+async function getDependabotRepos() {
+  try {
+    let paginationMember = null;
+    let dependabotRepos = [];
 
-      const query = `
-      query ($owner: String!, $cursorID: String) {
-        organization(login: $owner) {
-          repositories(first: 100, after: $cursorID) {
+    const query = `
+      query ($org: String!, $cursor: String) {
+        organization(login: $org) {
+          repositories(first: 10, after: $cursor) {
             nodes {
               name
-              templateRepository {
-                nameWithOwner
+              object(expression: "main:.github/dependabot.yml") {
+                ... on Blob {
+                  text
+                }
               }
             }
             pageInfo {
-              hasNextPage
               endCursor
+              hasNextPage
             }
           }
         }
       }
     `;
 
-      let hasNextPageMember = false;
-      let dataJSON = null;
+    let hasNextPageMember = false;
+    let dataJSON = null;
 
-      do {
-        dataJSON = await octokit.graphql({
-          query,
-          owner: org,
-          cursorID: paginationMember,
-        });
-
-
-        const repos = dataJSON.organization.repositories.nodes;
-
-        hasNextPageMember =
-          dataJSON.organization.repositories.pageInfo.hasNextPage;
-
-        if (hasNextPageMember) {
-          paginationMember =
-            dataJSON.organization.repositories.pageInfo.endCursor;
-        } else {
-          paginationMember = null;
-        }
-
-        templateRepoArray = templateRepoArray.concat(repos);
-      } while (hasNextPageMember);
-
-      const filteredArray = templateRepoArray.filter(
-        (x) => x.templateRepository !== null
-      );
-      const filteredArray2 = filteredArray.filter(
-        (x) => x.templateRepository.nameWithOwner === repoName
-      );
-      const repoNames = filteredArray2.map((x) => x.name);
-
-      await repoDirector(repoNames);
-    } catch (error) {
-      core.setFailed(error.message);
-    }
-  })();
-
-async function repoDirector(repoArray) {
-  try {
-    let csvArray = [];
-    const filteredArray = repoArray.filter((x) => x);
-
-    filteredArray.forEach((element) => {
-      const repoName = element;
-
-      csvArray.push({
-        repoName,
+    do {
+      dataJSON = await octokit.graphql({
+        query,
+        org,
+        cursor: paginationMember,
       });
-    });
 
-    sortTotals(csvArray);
+      const repos = dataJSON.organization.repositories.nodes;
+
+      hasNextPageMember =
+        dataJSON.organization.repositories.pageInfo.hasNextPage;
+
+      if (hasNextPageMember) {
+        paginationMember =
+          dataJSON.organization.repositories.pageInfo.endCursor;
+      } else {
+        paginationMember = null;
+      }
+
+      dependabotRepos = dependabotRepos.concat(repos);
+    } while (hasNextPageMember);
+
+    return dependabotRepos;
   } catch (error) {
-    core.setFailed(error.message);
+    throw new Error(`Error fetching dependabot repos: ${error.message}`);
   }
 }
 
-// Add columns, sort and push report to repo
-async function sortTotals(csvArray) {
+// Function to create a report
+async function createReport(repos) {
   try {
-    const columns = {
-      repoName: "Repo name",
-    };
+    const csvArray = repos.map((repo) => {
+      return {
+        repoName: repo.name,
+        hasDependabot: repo.object ? "Yes" : "No",
+      };
+    });
 
-    const sortColumn =
-      core.getInput("sort", { required: false }) || "additions";
-    const sortArray = arraySort(csvArray, sortColumn, { reverse: true });
-    sortArray.unshift(columns);
+    const sortedCsvArray = arraySort(csvArray, "repoName");
+    sortedCsvArray.unshift({
+      repoName: "Repository",
+      hasDependabot: "Dependabot.yml",
+    });
 
-    // Convert array to csv
-    const csv = stringify(sortArray, {});
+    // Convert array to CSV
+    const csv = stringify(sortedCsvArray, {});
 
-    // Prepare path/filename, repo/org context and commit name/email variables
-    const reportPath = `reports/${org}-${
-      new Date().toISOString().substring(0, 19) + "Z"
-    }-${fileDate}.csv`;
+    // Prepare path/filename, repo/org context, and commit name/email variables
+    const reportPath = `reports/${org}-${fileDate}-dependabot-report.csv`;
     const committerName =
       core.getInput("committer-name", { required: false }) || "github-actions";
     const committerEmail =
@@ -155,12 +126,12 @@ async function sortTotals(csvArray) {
       "github-actions@github.com";
     const { owner, repo } = github.context.repo;
 
-    // Push csv to repo
+    // Push CSV to the repo
     const opts = {
       owner,
       repo,
       path: reportPath,
-      message: `${new Date().toISOString().slice(0, 10)} Git audit-log report`,
+      message: `${new Date().toISOString().slice(0, 10)} Dependabot Report`,
       content: Buffer.from(csv).toString("base64"),
       committer: {
         name: committerName,
@@ -168,9 +139,18 @@ async function sortTotals(csvArray) {
       },
     };
 
-
     await octokit.rest.repos.createOrUpdateFileContents(opts);
+  } catch (error) {
+    throw new Error(`Error creating report: ${error.message}`);
+  }
+}
+
+// Main function
+(async () => {
+  try {
+    const dependabotRepos = await getDependabotRepos();
+    await createReport(dependabotRepos);
   } catch (error) {
     core.setFailed(error.message);
   }
-}
+})();
