@@ -30,8 +30,8 @@ jobs:
       - name: Get dormant repos
         uses: trojan-actions/dependabot-usage-report@main
         with:
-          token: ${{ secrets.YOUR_TOKEN }}
-          org: ${{ github.event.inputs.org }} 
+          token: ${{ secrets.ORG_TOKEN }}
+          org: ${{ github.event.inputs.org }}  
 ```
 
 In this example, the action is scheduled to run every day at midnight. It checks out the code, generates the report using the action, commits the changes to the repository, and pushes them to the remote repository.
