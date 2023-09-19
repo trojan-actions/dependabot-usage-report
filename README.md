@@ -12,24 +12,26 @@ None.
 ### Example Usage
 
 ```yml
-name: Generate Dependabot Usage Report
+name: Dependabot usage
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      org:
 
 jobs:
-  generate-report:
+  dormant-repos:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Generate report
-        uses: ./ # Path to the action
+      - name: Get dormant repos
+        uses: trojan-actions/dependabot-usage-report@main
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          org: my-org
+          token: ${{ secrets.YOUR_TOKEN }}
+          org: ${{ github.event.inputs.org }} 
 ```
 
 In this example, the action is scheduled to run every day at midnight. It checks out the code, generates the report using the action, commits the changes to the repository, and pushes them to the remote repository.
